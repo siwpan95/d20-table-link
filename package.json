@@ -1,0 +1,17 @@
+{
+  "name": "d20-table-link",
+  "version": "0.1.0",
+  "description": "d20（TRPG 规则内核）× cordis-table-app（表格/地图载体）的联动适配器与演示",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "siwpan",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/demo.mjs",
+    "demo": "node src/demo.mjs",
+    "smoke": "node src/smoke.mjs"
+  }
+}

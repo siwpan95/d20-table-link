@@ -1,0 +1,14 @@
+# 依赖与构建产物
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.log
+
+# 生成的产物（不随仓库分发）
+output/
+
+# 系统文件
+.DS_Store
+Thumbs.db
