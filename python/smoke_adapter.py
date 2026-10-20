@@ -3,7 +3,7 @@
 """smoke_adapter.py —— 适配器冒烟测试 / 自检（可直接跑，退出码即结论）
 
 覆盖：
-  1) 两侧可用性（cordis-table-app 的 rpc_server 与 d20 是否都接上）
+  1) 两侧可用性（cordis-table-app 的 rpc_server 与 allin_engine 是否都接上）
   2) 表格面：建簿 → 写中文 → 存盘 → 读回 → 字节级复核
   3) 规则面：角色卡、各类掷骰、gurps 检定
   4) 联动面：d20_encounter 对同一 (room, seed) **可复现**
@@ -38,15 +38,15 @@ print("  python =", sys.version.split()[0], flush=True)
 print("\n[1] 两侧可用性", flush=True)
 ping = A.handle("adapter_ping", {})
 check("cordis-table-app 已接上", ping["cta_available"], ping["cta_rpc_server"] or "(未找到)")
-check("d20 已接上", ping["d20_available"], ping["d20_repo"] or "(未找到)")
-if not ping["cta_available"] or not ping["d20_available"]:
+check("d20 已接上", ping["engine_available"], ping["engine_source"] or "(未找到)")
+if not ping["cta_available"] or not ping["engine_available"]:
     print("\n  前置不满足，终止。可用环境变量指定：", flush=True)
     print("    CTA_RPC_SERVER=<cordis-table-app>/python/rpc_server.py", flush=True)
-    print("    D20_REPO=<d20 仓根>", flush=True)
+    print("    pip install allin-engine", flush=True)
     sys.exit(1)
 
 dp = A.handle("d20_ping", {})
-check("d20 版本可读", bool(dp.get("d20_version")), "v" + str(dp.get("d20_version")))
+check("d20 版本可读", bool(dp.get("engine_version")), "v" + str(dp.get("engine_version")))
 check("d20 属性表非空", len(dp.get("attributes") or []) >= 4, ",".join(dp.get("attributes") or []))
 
 print("\n[2] 表格面（经适配器转发到 cordis-table-app 的处理器）", flush=True)
@@ -66,7 +66,7 @@ rows = back.get("rows") or []
 flat = [str(c) for row in rows for c in (row if isinstance(row, list) else [row])]
 check("读回含中文且无损", any("你好，世界" in c for c in flat), str(flat[:6]))
 
-print("\n[3] 规则面（d20）", flush=True)
+print("\n[3] 规则面（allin_engine.trpg）", flush=True)
 ch = A.handle("d20_character", {"name": "试炼者", "attributes": {"力量": 16, "敏捷": 14}})
 check("角色卡生成", "角色卡" in ch.get("sheet", ""), "长度 %d" % len(ch.get("sheet", "")))
 for kind in ("d20", "d100", "d6", "3d6"):

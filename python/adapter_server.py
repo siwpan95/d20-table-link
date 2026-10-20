@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""adapter_server.py —— d20 × Cordis 表格应用的联动适配器（JSON-RPC over stdio）
+"""adapter_server.py —— allin_engine（TRPG 规则内核）× Cordis 表格应用的联动适配器（JSON-RPC over stdio）
+
+规则侧依赖上溯（2026-10-20）
+--------------------------
+原先接的是 **siwpan/d20** 仓；但该仓自 R2（2026-08-27）起已不含任何规则代码——
+`d20/` 只是转发 `allin_engine.trpg` 的薄 shim，真正的规则内核一直在
+**allin_engine.trpg**（PyPI 发行名 `allin-engine`）。
+故本适配器**跳过中间那层 shim，直接依赖内核**；siwpan/d20 仓由此确诊冗余并删除
+（其界面壳已并入 an-engine）。
 
 定位
 ----
@@ -11,7 +19,7 @@
     │  （薄 shim → 引擎 trpg）│        │  （Cordis 内核 + OpenPyXL）    │
     │  Character / 骰子 / 数据 │        │  工作表 / VTT 地图 / DonJon JSON │
     └───────────┬────────────┘        └───────────────┬──────────────┘
-                │   import d20                        │  复用其 rpc_server.handle()
+                │   import allin_engine.trpg          │  复用其 rpc_server.handle()
                 └──────────────┬──────────────────────┘
                                ▼
                   本适配器：一个进程，两个能力面
@@ -27,10 +35,12 @@
 
 路径发现（不写死本机盘符）
 ------------------------
-按顺序取，命中即停：
-  1) 环境变量 `CTA_RPC_SERVER` / `D20_REPO`
-  2) 与本仓同级目录（`../cordis-table-app/python/rpc_server.py`、`../d20`）
-两侧都可被环境变量覆盖，便于换机/换布局。
+· 规则侧：**不再探测本地仓目录**。`allin_engine` 是 PyPI 上的正式发行包
+  （`pip install allin-engine`），直接 import 即可，与目录布局无关。
+· 载体侧仍需按文件定位（cordis-table-app 未打包）：
+    1) 环境变量 `CTA_RPC_SERVER`
+    2) 与本仓同级目录 `../cordis-table-app/python/rpc_server.py`
+环境变量 `D20_REPO` 已随 siwpan/d20 仓一并下线。
 """
 import importlib.util
 import os
@@ -63,13 +73,18 @@ def _locate_cta_rpc():
     return cand if os.path.isfile(cand) else None
 
 
-def _locate_d20_repo():
-    """定位 d20 仓根（其包目录是 <仓根>/d20）。"""
-    env = os.environ.get("D20_REPO")
-    if env and os.path.isdir(os.path.join(env, "d20")):
-        return env
-    cand = os.path.join(PARENT, "d20")
-    return cand if os.path.isdir(os.path.join(cand, "d20")) else None
+def _locate_trpg():
+    """规则侧：直接 import 已安装的 allin_engine.trpg（不再探测本地仓目录）。
+
+    siwpan/d20 仓原先只是这层能力的薄 shim，2026-10-20 确诊冗余后删除，
+    故这里上溯到真正的规则内核落点。
+    """
+    try:
+        import allin_engine.trpg as _trpg
+        import allin_engine as _ae
+        return _trpg, getattr(_ae, "__file__", None)
+    except BaseException:
+        return None, None
 
 
 # ---------------------------------------------------------------- 载入两侧
@@ -86,16 +101,11 @@ if CTA_PATH:
               file=sys.stderr)
         CTA = None
 
-D20 = None
-D20_PATH = _locate_d20_repo()
-if D20_PATH and D20_PATH not in sys.path:
-    sys.path.insert(0, D20_PATH)
-try:
-    import d20 as D20  # noqa: N816
-except BaseException:
-    print("[adapter] 载入 d20 失败（可用 D20_REPO 指定仓根）:\n" + traceback.format_exc(),
+TRPG, TRPG_SOURCE = _locate_trpg()
+if TRPG is None:
+    print("[adapter] 载入 allin_engine 失败（pip install allin-engine）:"
+          + chr(10) + traceback.format_exc(),
           file=sys.stderr)
-    D20 = None
 
 
 # ---------------------------------------------------------------- 表格面转发
@@ -121,18 +131,18 @@ def _table(method, params):
 
 def _d20_ping(_p):
     return {
-        "available": D20 is not None,
-        "d20_version": getattr(D20, "__version__", None) if D20 else None,
-        "d20_repo": D20_PATH,
-        "attributes": list(D20.ATTRIBUTES) if D20 else [],
+        "available": TRPG is not None,
+        "engine_version": getattr(__import__("allin_engine"), "__version__", None) if TRPG else None,
+        "engine_source": TRPG_SOURCE,
+        "attributes": list(TRPG.ATTRIBUTES) if TRPG else [],
     }
 
 
 def _d20_character(p):
     """建角色并可选设属性，返回角色卡文本与结构化摘要。"""
-    if D20 is None:
-        raise RuntimeError("d20 不可用（用 D20_REPO 指定其仓根）")
-    c = D20.Character()
+    if TRPG is None:
+        raise RuntimeError("d20 不可用（pip install allin-engine）")
+    c = TRPG.Character()
     for name, val in (p.get("attributes") or {}).items():
         c.set_attribute(name, int(val))
     for item in (p.get("equip") or []):
@@ -151,60 +161,60 @@ def _d20_character(p):
 def _d20_roll(p):
     """掷骰。
 
-    签名取自 d20 实际探测（2026-09-25，不靠猜）：
+    签名取自 allin_engine.trpg 实际探测（2026-09-25，不靠猜）：
         roll_d20(rng=random)                 -> int
         roll_d100(rng=random)                -> int
         roll_d6(num, mod=0, rng=random)      -> (dice: list[int], total: int)
         roll_3d6(rng=random)                 -> (dice: list[int], total: int)
         gurps_success_chance(skill_level)    -> int
-    所有掷骰都接受 `rng`，故「可复现」直接由 d20 自己保证（传一个 seeded Random 即可），
+    所有掷骰都接受 `rng`，故「可复现」直接由 allin_engine.trpg 保证（传一个 seeded Random 即可），
     不需要在外层另造随机源。
     """
-    if D20 is None:
-        raise RuntimeError("d20 不可用（用 D20_REPO 指定其仓根）")
+    if TRPG is None:
+        raise RuntimeError("d20 不可用（pip install allin-engine）")
     import random as _random
     rng = _random.Random(int(p["seed"])) if p.get("seed") is not None else _random
 
     kind = (p.get("kind") or "d20").lower()
     if kind == "d20":
-        return {"kind": kind, "value": D20.roll_d20(rng)}
+        return {"kind": kind, "value": TRPG.roll_d20(rng)}
     if kind == "d100":
-        return {"kind": kind, "value": D20.roll_d100(rng)}
+        return {"kind": kind, "value": TRPG.roll_d100(rng)}
     if kind == "d6":
         n = int(p.get("n", 1))
         mod = int(p.get("mod", 0))
-        dice, total = D20.roll_d6(n, mod, rng)
+        dice, total = TRPG.roll_d6(n, mod, rng)
         return {"kind": "d6", "n": n, "mod": mod, "dice": list(dice), "value": total}
     if kind == "3d6":
-        dice, total = D20.roll_3d6(rng)
+        dice, total = TRPG.roll_3d6(rng)
         return {"kind": kind, "dice": list(dice), "value": total}
     if kind in ("gurps", "success"):
         skill = int(p.get("skill", 12))
-        return {"kind": "gurps", "skill": skill, "chance": D20.gurps_success_chance(skill)}
+        return {"kind": "gurps", "skill": skill, "chance": TRPG.gurps_success_chance(skill)}
     raise ValueError("未知掷骰类型: " + kind)
 
 
 def _d20_encounter(p):
-    """为地牢房间生成一段「遭遇」，内容全部由 d20 的骰子与数据产生。
+    """为地牢房间生成一段「遭遇」，内容全部由 allin_engine.trpg 的骰子与数据产生。
 
     这是联动的核心：**载体给出房间 → 规则侧填充内容**。
-    可复现：`seed` 决定全部掷骰（经 d20 的 rng 参数传入），同参数必然同结果。
+    可复现：`seed` 决定全部掷骰（经 allin_engine.trpg 的 rng 参数传入），同参数必然同结果。
     """
-    if D20 is None:
-        raise RuntimeError("d20 不可用（用 D20_REPO 指定其仓根）")
+    if TRPG is None:
+        raise RuntimeError("d20 不可用（pip install allin-engine）")
     import random as _random
 
     room = int(p.get("room", 0))
     level = int(p.get("party_level", 3))
     seed = int(p.get("seed", 0)) + room * 977
     rng = _random.Random(seed)           # 本函数内的选型用
-    drng = _random.Random(seed)          # 交给 d20 的掷骰用（两者分开，互不干扰取数顺序）
+    drng = _random.Random(seed)          # 交给 allin_engine.trpg 的掷骰用（两者分开，互不干扰取数顺序）
 
-    attack = D20.roll_d20(drng)
-    check_dice, check_total = D20.roll_3d6(drng)
+    attack = TRPG.roll_d20(drng)
+    check_dice, check_total = TRPG.roll_3d6(drng)
     dc = 10 + level + rng.randint(-2, 3)
 
-    skills = list((getattr(D20, "SKILL_LIBRARY", {}) or {}).keys())
+    skills = list((getattr(TRPG, "SKILL_LIBRARY", {}) or {}).keys())
     skill = skills[rng.randrange(len(skills))] if skills else "通用"
     monsters = ["地精", "骷髅兵", "巨鼠", "石像鬼", "暗影狼", "腐化树精", "食人魔", "幽魂"]
     monster = monsters[rng.randrange(len(monsters))]
@@ -246,8 +256,8 @@ def handle(method, params):
             "adapter": "d20-table-link",
             "cta_rpc_server": CTA_PATH,
             "cta_available": CTA is not None,
-            "d20_repo": D20_PATH,
-            "d20_available": D20 is not None,
+            "engine_source": TRPG_SOURCE,
+            "engine_available": TRPG is not None,
         }
     if method in D20_METHODS:
         return D20_METHODS[method](params)
@@ -256,7 +266,7 @@ def handle(method, params):
 
 def main():
     _setup_stdio_utf8()
-    print("[adapter] cordis-table-app = %s | d20 = %s" % (CTA_PATH, D20_PATH), file=sys.stderr)
+    print("[adapter] cordis-table-app = %s | allin_engine = %s" % (CTA_PATH, TRPG_SOURCE), file=sys.stderr)
     for line in sys.stdin:
         line = line.strip()
         if not line:
