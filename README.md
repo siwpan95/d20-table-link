@@ -1,5 +1,12 @@
 # d20-table-link —— allin_engine（TRPG 规则内核）× Cordis 表格应用（载体）的联动适配器
 
+## 仓库角色定位（投资组合分级 ①）
+
+> 本仓在 siwpan 投资组合（D:/projects/repos，共 133 仓）中定级为 **① 核心推进**，领域 **跑团/TRPG**，定位 **TRPG+本地AI收敛点**。
+> **角色**：allin_engine TRPG × cordis-table-app 适配器，随 TRPG 栈维护。
+> **维护策略**：① 核心推进——持续投入、不允许冻结；随所属收敛点 / 流水线长期演进。
+> 投资组合统一分级索引：`D:/projects/repos/PORTFOLIO_TIERING.md`。
+
 > **规则侧依赖已于 2026-10-20 上溯**：原先接 `siwpan/d20`（它自 R2 起只是转发
 > `allin_engine.trpg` 的薄 shim），现直接依赖内核 `allin_engine.trpg`；
 > siwpan/d20 仓确诊冗余后删除，其界面壳并入 `an-engine`。RPC 方法名 `d20_*` 保持不变。

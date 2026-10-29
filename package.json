@@ -12,6 +12,7 @@
   "scripts": {
     "start": "node src/demo.mjs",
     "demo": "node src/demo.mjs",
+    "test": "node --test test/smoke.mjs",
     "smoke": "node src/smoke.mjs"
   }
 }
